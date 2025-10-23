@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langgraph.graph import StateGraph, END
 
 # Mock LLM call - replace with actual Anthropic/OpenAI client
-def call_llm(system_prompt: str, user_prompt: str, model: str = "claude-sonnet-4") -> str:
+def call_llm(system_prompt: str, user_prompt: str, model: str = "") -> str:
     """
     Replace this with actual LLM API call.
     For now, returns mock JSON configs.
