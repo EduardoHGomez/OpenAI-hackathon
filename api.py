@@ -14,13 +14,13 @@ import uuid
 
 app = FastAPI(title="PyTorch Optimizer API")
 
-# CORS - Allow your Vercel frontend
+# CORS - Allow any origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to your Vercel domain in production
+    allow_origins=["*"],  # Allows all origins (wildcard)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 
 
