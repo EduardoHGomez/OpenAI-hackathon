@@ -133,23 +133,25 @@ def calculate_score(metrics: dict, baseline: dict, weights: dict = None) -> floa
 def profiler_expert(state: OptimizationState) -> dict:
     """Profiles current code and measures all metrics"""
     print(f"\n{'='*70}")
-    print(f"📊 PROFILER - Measuring Performance")
+    print(f"📊 PROFILER - Measuring Performance (Iteration {state['iteration']})")
     print(f"{'='*70}")
-    
+    print(f"🔍 DEBUG: Code length: {len(state['current_code'])} chars")
+
     code = state["current_code"]
     dataset_info = state["dataset_info"]
-    
+
     try:
         # Execute code and measure
         metrics = execute_and_measure(code, dataset_info)
-        
-        print(f"\n📈 Metrics:")
+
+        print(f"\n📈 Metrics collected: {len(metrics)}")
         for key, value in metrics.items():
             print(f"   {key}: {value:.4f}")
-        
+
         # Simple report - no LLM needed
         report = f"Iteration {state['iteration']}: Measured {len(metrics)} metrics"
-        
+
+        print(f"🔍 DEBUG: Profiler returning {len(metrics)} metrics")
         return {
             "current_metrics": metrics,
             "profiler_report": report,
@@ -158,6 +160,7 @@ def profiler_expert(state: OptimizationState) -> dict:
         
     except Exception as e:
         print(f"❌ Profiling failed: {e}")
+        traceback.print_exc()
         return {
             "current_metrics": {},
             "profiler_report": f"Error: {str(e)}",
@@ -240,8 +243,10 @@ Propose 3-5 PyTorch optimizations with code snippets."""
 def code_generator(state: OptimizationState) -> dict:
     """Generates improved code based on all expert proposals"""
     print(f"\n{'='*70}")
-    print(f"🔨 CODE GENERATOR - Synthesizing")
+    print(f"🔨 CODE GENERATOR - Synthesizing (Iteration {state['iteration']})")
     print(f"{'='*70}")
+    print(f"🔍 DEBUG: Has memory proposal: {bool(state.get('memory_proposal'))}")
+    print(f"🔍 DEBUG: Has optimizer proposal: {bool(state.get('optimizer_proposal'))}")
     
     system_prompt = """You are an expert Python/PyTorch code generator.
 Generate COMPLETE, WORKING Python code with all optimizations applied.
@@ -274,15 +279,25 @@ OBJECTIVE: {state['objective']}
 
 Generate improved code with these optimizations."""
     
-    response = call_llm(system_prompt, user_prompt)
-    new_code = extract_code(response)
-    
-    print(f"\n✅ Generated improved code ({len(new_code)} chars)")
-    
-    return {
-        "current_code": new_code,
-        "experts_done": []  # Reset for next iteration
-    }
+    try:
+        response = call_llm(system_prompt, user_prompt)
+        new_code = extract_code(response)
+
+        print(f"\n✅ Generated improved code ({len(new_code)} chars)")
+        print(f"🔍 DEBUG: Code preview: {new_code[:200]}...")
+
+        return {
+            "current_code": new_code,
+            "experts_done": []  # Reset for next iteration
+        }
+    except Exception as e:
+        print(f"❌ Code generation failed: {e}")
+        traceback.print_exc()
+        print(f"🔍 DEBUG: Keeping previous code")
+        return {
+            "current_code": state["current_code"],  # Keep previous
+            "experts_done": []
+        }
 
 
 # ============================================================================
@@ -294,28 +309,36 @@ def judge_improvement(state: OptimizationState) -> dict:
     print(f"\n{'='*70}")
     print(f"⚖️  JUDGE - Evaluating")
     print(f"{'='*70}")
-    
+
     current = state["current_metrics"]
-    
+    print(f"🔍 DEBUG: Current metrics exist: {bool(current)}")
+    print(f"🔍 DEBUG: Current metrics: {current}")
+
     # First iteration - set baseline
     if not state.get("best_metrics"):
-        print("📊 Setting baseline")
-        return {
+        print("📊 Setting baseline (first iteration)")
+        print(f"🔍 DEBUG: Baseline metrics: {current}")
+        result = {
             "best_metrics": current,
             "best_code": state["current_code"],
             "iteration": state["iteration"] + 1,
             "converged": False
         }
+        print(f"🔍 DEBUG: Returning: {result}")
+        return result
     
     baseline = state["best_metrics"]
-    
+    print(f"🔍 DEBUG: Baseline metrics: {baseline}")
+
     # Calculate composite score
     score_current = calculate_score(current, baseline)
-    
+    print(f"🔍 DEBUG: Score calculated: {score_current:.4f}")
+
     improvement_pct = (score_current - 1.0) * 100
-    
+
     print(f"\n📊 Score: {score_current:.3f} (baseline: 1.0)")
     print(f"   Overall: {improvement_pct:+.1f}%")
+    print(f"🔍 DEBUG: Improvement threshold: {IMPROVEMENT_THRESHOLD} ({IMPROVEMENT_THRESHOLD * 100}%)")
     
     # Individual metrics
     for metric in current.keys():
@@ -326,19 +349,26 @@ def judge_improvement(state: OptimizationState) -> dict:
     
     # Accept if improved
     if score_current > 1.0 + IMPROVEMENT_THRESHOLD:
-        print(f"\n🎯 ACCEPTED!")
-        return {
+        print(f"\n🎯 ACCEPTED! Score {score_current:.3f} > {1.0 + IMPROVEMENT_THRESHOLD:.3f}")
+        result = {
             "best_metrics": current,
             "best_code": state["current_code"],
             "iteration": state["iteration"] + 1,
             "converged": state["iteration"] >= MAX_ITERATIONS - 1
         }
-    
-    print(f"\n📊 No significant improvement")
-    return {
+        print(f"🔍 DEBUG: Returning ACCEPTED: best_metrics={bool(result['best_metrics'])}, converged={result['converged']}")
+        return result
+
+    print(f"\n📊 No significant improvement - keeping baseline")
+    print(f"🔍 DEBUG: Score {score_current:.3f} <= {1.0 + IMPROVEMENT_THRESHOLD:.3f}")
+    result = {
+        "best_metrics": baseline,  # PRESERVE baseline metrics
+        "best_code": state["best_code"],  # PRESERVE best code
         "iteration": state["iteration"] + 1,
         "converged": state["iteration"] >= MAX_ITERATIONS - 1 or state["iteration"] > 2
     }
+    print(f"🔍 DEBUG: Returning REJECTED: best_metrics={bool(result['best_metrics'])}, converged={result['converged']}")
+    return result
 
 
 # ============================================================================
@@ -506,16 +536,27 @@ def optimize_pytorch_code(
     }
     
     graph = build_graph()
-    
+
     final_state = None
     iteration_results = []
-    
+    original_baseline = None  # Track first iteration metrics
+
     try:
         for iteration_state in graph.stream(initial_state, {"recursion_limit": 100}):
             final_state = iteration_state
+            print(f"\n🔍 DEBUG: Graph iteration received state: {list(iteration_state.keys())}")
+
             # Capture each iteration for UI
             if final_state:
                 state_dict = list(final_state.values())[0]
+                print(f"🔍 DEBUG: State iteration={state_dict.get('iteration')}, converged={state_dict.get('converged')}")
+                print(f"🔍 DEBUG: Has best_metrics: {bool(state_dict.get('best_metrics'))}")
+
+                # Capture original baseline (first iteration)
+                if original_baseline is None and state_dict.get("best_metrics"):
+                    original_baseline = state_dict["best_metrics"].copy()
+                    print(f"🔍 DEBUG: Captured original baseline: {original_baseline}")
+
                 if state_dict.get("current_metrics"):
                     iteration_results.append({
                         "iteration": state_dict.get("iteration", 0),
@@ -528,17 +569,26 @@ def optimize_pytorch_code(
     except Exception as e:
         print(f"\n❌ Error: {e}")
         traceback.print_exc()
-    
+
     if final_state:
         final_state = list(final_state.values())[0]
-        
-        # Calculate improvements
+
+        print(f"\n🔍 DEBUG: Final state analysis:")
+        print(f"   - Has best_metrics: {bool(final_state.get('best_metrics'))}")
+        print(f"   - Best metrics: {final_state.get('best_metrics')}")
+        print(f"   - Original baseline: {original_baseline}")
+        print(f"   - Iterations completed: {final_state.get('iteration', 0)}")
+
+        # Calculate improvements vs ORIGINAL baseline
         improvements = {}
-        if final_state.get("best_metrics"):
-            baseline = final_state["best_metrics"]
-            for metric, value in final_state.get("best_metrics", {}).items():
-                if metric in baseline and baseline[metric] > 0:
-                    improvements[metric] = ((value - baseline[metric]) / baseline[metric]) * 100
+        if final_state.get("best_metrics") and original_baseline:
+            print(f"🔍 DEBUG: Calculating improvements...")
+            for metric, final_value in final_state.get("best_metrics", {}).items():
+                if metric in original_baseline and original_baseline[metric] > 0:
+                    improvements[metric] = ((final_value - original_baseline[metric]) / original_baseline[metric]) * 100
+                    print(f"   - {metric}: {original_baseline[metric]:.2f} → {final_value:.2f} = {improvements[metric]:+.1f}%")
+        else:
+            print(f"🔍 DEBUG: Cannot calculate improvements - missing data")
         
         # Calculate composite score
         final_score = calculate_score(
