@@ -1,7 +1,7 @@
 import time
 import statistics
 from dataclasses import dataclass
-from typing import Callable, Any, Tuple
+from typing import Callable, Any, Tuple, Dict
 import torch
 
 @dataclass
@@ -17,7 +17,7 @@ def _cuda_sync():
         torch.cuda.synchronize()
 
 def time_callable(callable_fn: Callable[[], Any], *, warmup: int = 5, iters: int = 50) -> TimingResult:
-    # Warm-up
+    # Warmup
     for _ in range(warmup):
         callable_fn()
     _cuda_sync()
@@ -55,35 +55,37 @@ def compare_against_reference(
 def speedup_ms(baseline_ms: float, new_ms: float) -> float:
     return baseline_ms / new_ms
 
+class MetricsEvaluator:
+    """
+    Simple scoring wrapper expected by gpu_kernel_tuner.py.
+    .evaluate(sample_dict) -> dict with a 'score' key (lower is better).
+    """
+    def __init__(self, w_med: float = 0.7, w_p90: float = 0.3, penalty: float = 1e6):
+        self.w_med = w_med
+        self.w_p90 = w_p90
+        self.penalty = penalty
+
+    def evaluate(self, sample: Dict[str, Any]) -> Dict[str, Any]:
+        # sample keys expected by your tuner: median_ms, p90_ms, correct, max_abs_diff, config
+        correct = bool(sample.get("correct", False))
+        median_ms = float(sample.get("median_ms", float("inf")))
+        p90_ms = float(sample.get("p90_ms", float("inf")))
+        max_abs = float(sample.get("max_abs_diff", float("inf")))
+
+        if not correct or not torch.isfinite(torch.tensor([median_ms, p90_ms])).all():
+            score = self.penalty
+        else:
+            # Weighted latency; add a tiny numerical-stability term with error
+            score = self.w_med * median_ms + self.w_p90 * p90_ms + 1e3 * float(max_abs)
+
+        return {
+            "score": score,
+            "correct": correct,
+            "median_ms": median_ms,
+            "p90_ms": p90_ms,
+            "max_abs_diff": max_abs,
+        }
+
 if __name__ == "__main__":
-
-    # Example wiring with the Triton function
-    import triton_matmul as tmm
-
-    torch.manual_seed(0)
-    device = "cuda"
-    M = N = K = 2048
-    a = torch.randn(M, K, device=device, dtype=torch.float16)
-    b = torch.randn(K, N, device=device, dtype=torch.float16)
-
-    def run_triton():
-        return tmm.triton_matmul(a, b)
-
-    # Baseline using torch.mm in fp16→fp32
-    def run_ref():
-        return (a.float() @ b.float()).half()
-
-    # Timing
-    triton_time = time_callable(lambda: run_triton())
-    ref_time = time_callable(lambda: run_ref())
-
-    # Correctness
-    ok, max_abs = compare_against_reference(run_triton, run_ref)
-
-    print({
-        "triton_ms_median": round(triton_time.median_ms, 3),
-        "torch_ms_median": round(ref_time.median_ms, 3),
-        "correct": ok,
-        "max_abs_diff": max_abs,
-        "speedup_vs_torch": round(speedup_ms(ref_time.median_ms, triton_time.median_ms), 3)
-    })
+    # Optional quick self-check
+    print("MetricsEvaluator ready.")
