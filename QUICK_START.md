@@ -31,8 +31,7 @@ python3 test_api.py
 
 ```bash
 # 1. SSH into your GPU instance
-ssh -i your-key.pem ubuntu@54.227.120.179
-
+ssh -i your-key.pem ubuntu@149.36.1.201:17136
 # 2. Upload files
 scp -i your-key.pem -r ./* ubuntu@54.227.120.179:~/openai-hackathon/
 

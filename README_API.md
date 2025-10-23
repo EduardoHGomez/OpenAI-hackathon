@@ -117,8 +117,7 @@ python3 test_api.py
 scp -i key.pem -r . ubuntu@54.227.120.179:~/app/
 
 # 2. SSH and run
-ssh -i key.pem ubuntu@54.227.120.179
-cd app
+ssh -i key.pem ubuntu@149.36.1.201:17136cd app
 echo "OPENAI_API_KEY=sk-..." > .env
 ./start_api.sh
 

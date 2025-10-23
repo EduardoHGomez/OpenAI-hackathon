@@ -39,8 +39,7 @@ scp -i your-key.pem -r /path/to/openai-hackathon ubuntu@54.227.120.179:~/
 
 ```bash
 # SSH into your instance
-ssh -i your-key.pem ubuntu@54.227.120.179
-
+ssh -i your-key.pem ubuntu@149.36.1.201:17136
 # Navigate to project
 cd openai-hackathon
 
