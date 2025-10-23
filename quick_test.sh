@@ -4,7 +4,7 @@
 
 # Your AWS IP
 IP="149.36.1.201"
-PORT="8000"
+PORT="8888"
 
 echo "🧪 Testing PyTorch Optimizer API"
 echo "=================================="

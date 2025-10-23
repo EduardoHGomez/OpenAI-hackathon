@@ -3,8 +3,8 @@
 ## Your API Details
 
 **AWS IP:** `149.36.1.201`
-**Port:** `8000`
-**Base URL:** `http://149.36.1.201:8000`
+**Port:** `8888`
+**Base URL:** `http://149.36.1.201:8888`
 
 ---
 
@@ -14,7 +14,7 @@
 
 **Test it:**
 ```bash
-curl http://149.36.1.201:8000/
+curl http://149.36.1.201:8888/
 ```
 
 **Response:**
@@ -35,7 +35,7 @@ curl http://149.36.1.201:8000/
 
 **Test it:**
 ```bash
-curl http://149.36.1.201:8000/health
+curl http://149.36.1.201:8888/health
 ```
 
 **Response:**
@@ -61,7 +61,7 @@ curl http://149.36.1.201:8000/health
 
 **Test it:**
 ```bash
-curl -X POST http://149.36.1.201:8000/optimize \
+curl -X POST http://149.36.1.201:8888/optimize \
   -H "Content-Type: application/json" \
   -d '{
     "code": "import torch\n...",
@@ -113,7 +113,7 @@ curl -X POST http://149.36.1.201:8000/optimize \
 
 **Health check:**
 ```bash
-curl http://149.36.1.201:8000/
+curl http://149.36.1.201:8888/
 ```
 
 **Full test:**
@@ -123,7 +123,7 @@ curl http://149.36.1.201:8000/
 
 **From frontend:**
 ```javascript
-const response = await fetch("http://149.36.1.201:8000/optimize", {
+const response = await fetch("http://149.36.1.201:8888/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -155,12 +155,12 @@ cd openai-hackathon
 
 **Can't connect?**
 - Check API is running: `ps aux | grep api.py`
-- Check port 8000 is open in AWS Security Groups
-- Test locally first: `curl http://localhost:8000/`
+- Check port 8888 is open in AWS Security Groups
+- Test locally first: `curl http://localhost:8888/`
 
 **"Connection refused"**
 - API not running → Start it: `./start_api.sh`
-- Firewall blocking → Open port 8000 in AWS Console
+- Firewall blocking → Open port 8888 in AWS Console
 
 **"Internal Server Error"**
 - Check logs: `tail -f /var/log/pytorch-api.log` (if using systemd)
@@ -179,4 +179,4 @@ cd openai-hackathon
 
 ---
 
-**Your IP: 149.36.1.201:8000** ✅
+**Your IP: 149.36.1.201:8888** ✅

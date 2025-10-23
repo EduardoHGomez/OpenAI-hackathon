@@ -19,7 +19,7 @@ pip install -r requirements.txt
 
 # 3. Start server
 python3 api.py
-# Server runs on http://localhost:8000
+# Server runs on http://localhost:8888
 
 # 4. Test it (in another terminal)
 python3 test_api.py
@@ -42,11 +42,11 @@ pip3 install -r requirements.txt
 chmod +x start_api.sh
 ./start_api.sh
 
-# 4. Open port 8000 in AWS Security Groups
-# EC2 Console → Security Groups → Add inbound rule → Port 8000
+# 4. Open port 8888 in AWS Security Groups
+# EC2 Console → Security Groups → Add inbound rule → Port 8888
 
 # 5. Test from anywhere
-curl http://149.36.1.201:8000/
+curl http://149.36.1.201:8888/
 ```
 
 ---
@@ -57,7 +57,7 @@ curl http://149.36.1.201:8000/
 Health check
 
 ```bash
-curl http://149.36.1.201:8000/
+curl http://149.36.1.201:8888/
 # Response: {"status": "online", "gpu_available": true}
 ```
 
@@ -65,7 +65,7 @@ curl http://149.36.1.201:8000/
 Main endpoint - optimize PyTorch code
 
 ```bash
-curl -X POST http://149.36.1.201:8000/optimize \
+curl -X POST http://149.36.1.201:8888/optimize \
   -H "Content-Type: application/json" \
   -d '{
     "code": "import torch\n...",
@@ -118,7 +118,7 @@ curl -X POST http://149.36.1.201:8000/optimize \
 ## 🎨 Frontend Integration
 
 ```typescript
-const response = await fetch("http://149.36.1.201:8000/optimize", {
+const response = await fetch("http://149.36.1.201:8888/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -190,8 +190,8 @@ def get_metrics():
 ## 🐛 Troubleshooting
 
 **"Connection refused"**
-- Check if API is running: `curl http://localhost:8000/`
-- Check AWS security group allows port 8000
+- Check if API is running: `curl http://localhost:8888/`
+- Check AWS security group allows port 8888
 
 **"CUDA not available"**
 - Verify GPU: `nvidia-smi`

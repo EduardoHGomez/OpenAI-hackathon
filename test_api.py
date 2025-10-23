@@ -48,7 +48,7 @@ def get_metrics():
     }
 """
 
-def test_api(api_url="http://localhost:8000"):
+def test_api(api_url="http://localhost:8888"):
     print("🧪 Testing PyTorch Optimizer API\n")
 
     # Test 1: Health check
@@ -104,7 +104,7 @@ def test_api(api_url="http://localhost:8000"):
 
 if __name__ == "__main__":
     # Test locally
-    test_api("http://localhost:8000")
+    test_api("http://localhost:8888")
 
     # Or test on AWS (replace with your instance IP)
-    # test_api("http://149.36.1.201:8000")
+    # test_api("http://149.36.1.201:8888")

@@ -1,6 +1,6 @@
 """
 FastAPI Server for PyTorch Optimization
-Runs on AWS GPU Instance - Receives code, returns metrics
+Runs on Runpod GPU Instance - Receives code, returns metrics
 """
 
 from fastapi import FastAPI, HTTPException
@@ -177,6 +177,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=8888,
         log_level="info"
     )
