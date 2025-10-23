@@ -1,43 +1,62 @@
 """
-GPU Kernel Autotuner with LangGraph + Multi-Expert LLM Orchestration
-====================================================================
+GPU Kernel Autotuner - INTEGRATED with OpenAI + Triton Matmul
+==============================================================
 
-Three expert LLMs propose kernel configurations:
-- Throughput Expert: maximize arithmetic intensity
-- Memory Expert: minimize register/shared memory pressure
-- Robustness Expert: conservative, tensor-core friendly choices
-
-Works across kernels: matmul, softmax, layernorm, conv2d, etc.
+Fully integrated with:
+- OpenAI API (reads from .env)
+- Your triton_matmul.py for benchmarking
+- Your metrics_evaluator.py for evaluation
+- Complex flow (parallel experts)
 """
 
 import json
 import operator
+import os
+import sys
 from typing import Annotated, Any, Literal, TypedDict
 from langgraph.graph import StateGraph, END
 
-# Mock LLM call - replace with actual Anthropic/OpenAI client
-def call_llm(system_prompt: str, user_prompt: str, model: str = "") -> str:
+# Add triton-optimizer to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'triton-optimizer'))
+
+# Import your modules
+from triton_matmul import triton_matmul
+from metrics_evaluator import MetricsEvaluator
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# OpenAI imports
+from openai import OpenAI
+
+
+# ============================================================================
+# OPENAI LLM CALL
+# ============================================================================
+
+def call_llm(system_prompt: str, user_prompt: str, model: str = "gpt-4") -> str:
     """
-    Replace this with actual LLM API call.
-    For now, returns mock JSON configs.
+    Real OpenAI API call.
+    Reads OPENAI_API_KEY from .env file.
     """
-    # Mock responses for demonstration
-    import random
-    if "throughput" in user_prompt.lower():
-        return json.dumps({
-            "block_m": 128, "block_n": 128, "block_k": 64,
-            "num_warps": 8, "num_stages": 3
-        })
-    elif "memory" in user_prompt.lower():
-        return json.dumps({
-            "block_m": 64, "block_n": 64, "block_k": 32,
-            "num_warps": 4, "num_stages": 2
-        })
-    else:  # robustness
-        return json.dumps({
-            "block_m": 128, "block_n": 64, "block_k": 32,
-            "num_warps": 4, "num_stages": 2
-        })
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not found in .env file!")
+    
+    client = OpenAI(api_key=api_key)
+    
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.7,  # Some exploration
+        max_tokens=1024
+    )
+    
+    return response.choices[0].message.content
 
 
 # ============================================================================
@@ -118,7 +137,6 @@ def validate_config(config: dict[str, Any], knobs: list[dict[str, Any]]) -> tupl
 def estimate_shared_memory(config: dict[str, Any], kernel: str) -> int:
     """
     Estimate shared memory usage in bytes.
-    Cheap pre-check to avoid OOM proposals.
     """
     if kernel == "matmul":
         # Rough estimate: block_m*block_k + block_k*block_n, 2 bytes (fp16)
@@ -126,14 +144,6 @@ def estimate_shared_memory(config: dict[str, Any], kernel: str) -> int:
         tile_b = config.get("block_k", 32) * config.get("block_n", 128)
         stages = config.get("num_stages", 2)
         return (tile_a + tile_b) * 2 * stages
-    
-    elif kernel == "softmax":
-        # block_rows * vector_width * sizeof(float)
-        return config.get("block_rows", 512) * config.get("vector_width", 4) * 4
-    
-    elif kernel == "layernorm":
-        # block_hidden * vector_width * sizeof(float)
-        return config.get("block_hidden", 1024) * config.get("vector_width", 4) * 4
     
     return 0  # Conservative: assume safe
 
@@ -159,7 +169,7 @@ def create_expert_prompt(state: TuningState, bias: str) -> str:
     prompt = f"""KERNEL: {state['kernel']}
 SHAPE: {json.dumps(state['shape'])}
 KNOB_SCHEMA: {json.dumps(state['knobs'], indent=2)}
-HISTORY (last 5): {json.dumps(state['history'][-5:], indent=2)}
+HISTORY (last 5): {json.dumps(state['history'][-5:], indent=2) if state['history'] else "[]"}
 SYMPTOMS: {state['symptoms']}
 
 EXPERT BIAS: {bias.upper()}
@@ -180,10 +190,18 @@ def throughput_expert(state: TuningState) -> dict:
     response = call_llm(SYSTEM_PROMPT, prompt)
     
     try:
-        config = json.loads(response)
-        return {"proposals": [{"expert": "throughput", "config": config}]}
-    except json.JSONDecodeError:
-        return {"proposals": []}
+        # Extract JSON from response (LLM might add explanation)
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start != -1 and end != 0:
+            json_str = response[start:end]
+            config = json.loads(json_str)
+            print(f"📊 Throughput Expert: {config}")
+            return {"proposals": [{"expert": "throughput", "config": config}]}
+    except Exception as e:
+        print(f"❌ Throughput Expert error: {e}")
+    
+    return {"proposals": []}
 
 
 def memory_expert(state: TuningState) -> dict:
@@ -192,10 +210,17 @@ def memory_expert(state: TuningState) -> dict:
     response = call_llm(SYSTEM_PROMPT, prompt)
     
     try:
-        config = json.loads(response)
-        return {"proposals": [{"expert": "memory", "config": config}]}
-    except json.JSONDecodeError:
-        return {"proposals": []}
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start != -1 and end != 0:
+            json_str = response[start:end]
+            config = json.loads(json_str)
+            print(f"🧠 Memory Expert: {config}")
+            return {"proposals": [{"expert": "memory", "config": config}]}
+    except Exception as e:
+        print(f"❌ Memory Expert error: {e}")
+    
+    return {"proposals": []}
 
 
 def robustness_expert(state: TuningState) -> dict:
@@ -204,10 +229,17 @@ def robustness_expert(state: TuningState) -> dict:
     response = call_llm(SYSTEM_PROMPT, prompt)
     
     try:
-        config = json.loads(response)
-        return {"proposals": [{"expert": "robustness", "config": config}]}
-    except json.JSONDecodeError:
-        return {"proposals": []}
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start != -1 and end != 0:
+            json_str = response[start:end]
+            config = json.loads(json_str)
+            print(f"🛡️  Robustness Expert: {config}")
+            return {"proposals": [{"expert": "robustness", "config": config}]}
+    except Exception as e:
+        print(f"❌ Robustness Expert error: {e}")
+    
+    return {"proposals": []}
 
 
 # ============================================================================
@@ -251,39 +283,122 @@ def validate_proposals(state: TuningState) -> dict:
         })
         print(f"✅ {proposal['expert']}: {config} (SMEM: {smem/1024:.1f}KB)")
     
-    return {"valid_configs": valid_configs, "proposals": []}  # Clear proposals
+    return {"valid_configs": valid_configs, "proposals": []}
 
 
 # ============================================================================
-# EXECUTION NODE
+# EXECUTION NODE - INTEGRATED WITH YOUR TRITON CODE
 # ============================================================================
+
+import torch
+import numpy as np
 
 def execute_configs(state: TuningState) -> dict:
     """
-    Execute validated configs and measure performance.
-    Replace with actual kernel benchmarking.
+    Execute configs using YOUR triton_matmul.py and metrics_evaluator.py
     """
-    import random
-    
     results = []
+    
+    # Initialize metrics evaluator
+    evaluator = MetricsEvaluator()
+    
+    # Prepare inputs based on shape
+    M, K, N = state["shape"]["M"], state["shape"]["K"], state["shape"]["N"]
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    if device == "cpu":
+        print("⚠️  WARNING: CUDA not available, using CPU (slow!)")
+    
+    A = torch.randn(M, K, device=device, dtype=torch.float16)
+    B = torch.randn(K, N, device=device, dtype=torch.float16)
+    
+    # Reference output for correctness check
+    with torch.no_grad():
+        C_ref = (A.float() @ B.float()).half()
+    
     for item in state["valid_configs"]:
         config = item["config"]
+        expert = item["expert"]
         
-        # Mock execution - replace with real kernel benchmark
-        median_ms = random.uniform(40, 80)
-        p90_ms = median_ms * 1.1
-        correct = random.random() > 0.1  # 90% correctness rate
+        try:
+            # Extract config parameters
+            block_m = config["block_m"]
+            block_n = config["block_n"]
+            block_k = config["block_k"]
+            num_warps = config["num_warps"]
+            num_stages = config["num_stages"]
+            
+            print(f"\n⚡ Benchmarking {expert}: block_m={block_m}, block_n={block_n}, block_k={block_k}, warps={num_warps}, stages={num_stages}")
+            
+            # Warmup
+            for _ in range(10):
+                _ = triton_matmul(
+                    A, B,
+                    block_m=block_m, block_n=block_n, block_k=block_k,
+                    num_warps=num_warps, num_stages=num_stages
+                )
+            torch.cuda.synchronize()
+            
+            # Benchmark
+            times = []
+            num_trials = 100
+            
+            for _ in range(num_trials):
+                torch.cuda.synchronize()
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                
+                start.record()
+                C = triton_matmul(
+                    A, B,
+                    block_m=block_m, block_n=block_n, block_k=block_k,
+                    num_warps=num_warps, num_stages=num_stages
+                )
+                end.record()
+                
+                torch.cuda.synchronize()
+                times.append(start.elapsed_time(end))  # milliseconds
+            
+            median_ms = float(np.median(times))
+            p90_ms = float(np.percentile(times, 90))
+            
+            # Correctness check
+            max_abs_diff = (C - C_ref).abs().max().item()
+            correct = max_abs_diff < 1e-2  # 1% tolerance
+            
+            # Use metrics evaluator to get detailed metrics
+            metrics = evaluator.evaluate({
+                "config": config,
+                "median_ms": median_ms,
+                "p90_ms": p90_ms,
+                "max_abs_diff": max_abs_diff,
+                "correct": correct
+            })
+            
+            results.append({
+                "expert": expert,
+                "config": config,
+                "median_ms": median_ms,
+                "p90_ms": p90_ms,
+                "correct": correct,
+                "max_abs_diff": max_abs_diff,
+                "metrics": metrics
+            })
+            
+            status = "✅" if correct else "❌"
+            print(f"{status} {expert:12s}: {median_ms:6.2f}ms (p90: {p90_ms:6.2f}ms, diff: {max_abs_diff:.3e})")
         
-        results.append({
-            "expert": item["expert"],
-            "config": config,
-            "median_ms": median_ms,
-            "p90_ms": p90_ms,
-            "correct": correct
-        })
-        
-        status = "✅" if correct else "❌"
-        print(f"{status} {item['expert']}: {median_ms:.2f}ms (p90: {p90_ms:.2f}ms)")
+        except Exception as e:
+            print(f"❌ {expert:12s}: ERROR - {e}")
+            results.append({
+                "expert": expert,
+                "config": config,
+                "median_ms": float('inf'),
+                "p90_ms": float('inf'),
+                "correct": False,
+                "max_abs_diff": float('inf'),
+                "metrics": {}
+            })
     
     return {"results": results, "valid_configs": []}
 
@@ -325,20 +440,27 @@ def analyze_results(state: TuningState) -> dict:
         improvement = True
         best_config = best["config"]
         best_latency = best["median_ms"]
+        print(f"\n🎯 First best: {best_latency:.2f}ms")
     elif best["median_ms"] < state["best_latency"] * 0.98:  # 2% threshold
         improvement = True
+        old_latency = state["best_latency"]
         best_config = best["config"]
         best_latency = best["median_ms"]
-        print(f"🎯 New best: {best_latency:.2f}ms (from {state['best_latency']:.2f}ms)")
+        speedup = ((old_latency / best_latency) - 1) * 100
+        print(f"\n🎯 New best: {best_latency:.2f}ms (was {old_latency:.2f}ms, +{speedup:.1f}% speedup)")
     else:
         best_config = state["best_config"]
         best_latency = state["best_latency"]
+        print(f"\n📊 No improvement (best still {best_latency:.2f}ms)")
     
     # Convergence check
     converged = (
         state["iteration"] + 1 >= state["max_iterations"] or
         (not improvement and state["iteration"] > 2)
     )
+    
+    if converged:
+        print(f"\n✅ CONVERGED!")
     
     return {
         "history": history,
@@ -405,7 +527,7 @@ def build_graph():
 
 
 # ============================================================================
-# KERNEL SCHEMAS
+# KERNEL SCHEMA
 # ============================================================================
 
 MATMUL_SCHEMA = {
@@ -420,28 +542,6 @@ MATMUL_SCHEMA = {
     ]
 }
 
-SOFTMAX_SCHEMA = {
-    "kernel": "softmax",
-    "shape": {"batch": 32, "seq_len": 2048, "hidden": 768},
-    "knobs": [
-        {"name": "block_rows", "type": "int", "allowed": [256, 512, 1024]},
-        {"name": "vector_width", "type": "int", "allowed": [1, 2, 4, 8]},
-        {"name": "num_warps", "type": "int", "allowed": [2, 4, 8]},
-        {"name": "num_stages", "type": "int", "allowed": [1, 2, 3]}
-    ]
-}
-
-LAYERNORM_SCHEMA = {
-    "kernel": "layernorm",
-    "shape": {"batch": 32, "seq_len": 2048, "hidden": 1024},
-    "knobs": [
-        {"name": "block_hidden", "type": "int", "allowed": [256, 512, 1024]},
-        {"name": "vector_width", "type": "int", "allowed": [1, 2, 4, 8]},
-        {"name": "num_warps", "type": "int", "allowed": [2, 4, 8]},
-        {"name": "num_stages", "type": "int", "allowed": [1, 2, 3]}
-    ]
-}
-
 
 # ============================================================================
 # MAIN EXECUTION
@@ -452,6 +552,7 @@ def run_tuning(schema: dict, max_iterations: int = 5):
     print(f"\n{'='*70}")
     print(f"🚀 Starting autotuning for {schema['kernel'].upper()}")
     print(f"   Shape: {schema['shape']}")
+    print(f"   Using OpenAI API")
     print(f"{'='*70}\n")
     
     # Initialize state
@@ -489,22 +590,32 @@ def run_tuning(schema: dict, max_iterations: int = 5):
         print(f"Best Config: {json.dumps(final_state['best_config'], indent=2)}")
         print(f"Best Latency: {final_state['best_latency']:.2f}ms")
         print(f"Iterations: {final_state['iteration']}")
+        
+        if final_state['history']:
+            initial = final_state['history'][0]['median_ms']
+            final_lat = final_state['best_latency']
+            speedup = ((initial / final_lat) - 1) * 100
+            print(f"Speedup: {speedup:.1f}%")
+        
         print(f"{'='*70}\n")
         
         return final_state
 
 
 if __name__ == "__main__":
-    # Example: tune different kernels
     print("\n" + "="*70)
-    print("GPU KERNEL AUTOTUNER - Multi-Expert LLM Orchestration")
+    print("GPU KERNEL AUTOTUNER - OpenAI + Triton Integration")
     print("="*70)
     
-    # Tune matmul
-    matmul_result = run_tuning(MATMUL_SCHEMA, max_iterations=3)
+    # Check API key
+    if not os.getenv("OPENAI_API_KEY"):
+        print("❌ ERROR: OPENAI_API_KEY not found in .env file!")
+        print("Create a .env file with: OPENAI_API_KEY=your-key-here")
+        sys.exit(1)
     
-    # Tune softmax
-    softmax_result = run_tuning(SOFTMAX_SCHEMA, max_iterations=3)
+    # Check CUDA
+    if not torch.cuda.is_available():
+        print("⚠️  WARNING: CUDA not available!")
     
-    # Tune layernorm
-    layernorm_result = run_tuning(LAYERNORM_SCHEMA, max_iterations=3)
+    # Run tuning
+    result = run_tuning(MATMUL_SCHEMA, max_iterations=3)
