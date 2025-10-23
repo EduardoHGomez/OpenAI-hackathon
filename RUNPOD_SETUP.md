@@ -1,6 +1,6 @@
 # 🚀 Runpod Deployment Guide
 
-**Your Runpod IP:** `149.36.1.201:8888`
+**Your Runpod IP:** `149.36.1.201:8000`
 
 ---
 
@@ -9,7 +9,7 @@
 ### 1. Start Your Runpod Instance
 - Go to Runpod dashboard
 - Start your GPU pod
-- Note the exposed port for 8888 (usually auto-mapped)
+- Note the exposed port for 8000 (usually auto-mapped)
 
 ### 2. Connect via SSH
 ```bash
@@ -51,8 +51,8 @@ python3 api.py
 ## 🌐 Port Mapping
 
 Runpod automatically exposes ports. Your API runs on:
-- **Internal:** `0.0.0.0:8888` (inside the pod)
-- **External:** `149.36.1.201:8888` (public access)
+- **Internal:** `0.0.0.0:8000` (inside the pod)
+- **External:** `149.36.1.201:8000` (public access)
 
 No firewall/security group needed! ✅
 
@@ -62,7 +62,7 @@ No firewall/security group needed! ✅
 
 ```bash
 # From your local machine
-curl http://149.36.1.201:8888/
+curl http://149.36.1.201:8000/
 
 # Should return:
 # {"status":"online","service":"PyTorch Optimizer API",...}
@@ -78,7 +78,7 @@ Or use the test script:
 ## 🎨 Frontend Integration
 
 ```typescript
-const response = await fetch("http://149.36.1.201:8888/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -129,13 +129,13 @@ pm2 save
 **Can't connect to API?**
 ```bash
 # 1. Check API is running inside pod
-curl http://localhost:8888/
+curl http://localhost:8000/
 
 # 2. Check port mapping in Runpod dashboard
-# Should show: 8888 -> external port
+# Should show: 8000 -> external port
 
 # 3. Test from local machine
-curl http://149.36.1.201:8888/
+curl http://149.36.1.201:8000/
 ```
 
 **CUDA not found?**
@@ -168,9 +168,9 @@ nvidia-smi
 
 ## 🎯 Your API Endpoints
 
-- **Health:** `http://149.36.1.201:8888/`
-- **Detailed Health:** `http://149.36.1.201:8888/health`
-- **Optimize:** `POST http://149.36.1.201:8888/optimize`
+- **Health:** `http://149.36.1.201:8000/`
+- **Detailed Health:** `http://149.36.1.201:8000/health`
+- **Optimize:** `POST http://149.36.1.201:8000/optimize`
 
 ---
 
@@ -195,7 +195,7 @@ nvidia-smi
 ./start_api.sh
 
 # Test API
-curl http://149.36.1.201:8888/
+curl http://149.36.1.201:8000/
 
 # Full test
 ./quick_test.sh
@@ -208,4 +208,4 @@ tail -f logs.txt  # if you redirect output
 
 **Runpod is perfect for hackathons - cheap, fast, easy!** 💪
 
-Your API: `http://149.36.1.201:8888` ✅
+Your API: `http://149.36.1.201:8000` ✅

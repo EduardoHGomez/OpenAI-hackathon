@@ -54,7 +54,7 @@ A **battle-tested** FastAPI server that:
 
 ### Request
 ```bash
-POST http://149.36.1.201:8888/optimize
+POST http://149.36.1.201:8000/optimize
 Content-Type: application/json
 
 {
@@ -121,7 +121,7 @@ ssh -i key.pem ubuntu@149.36.1.201:17136cd app
 echo "OPENAI_API_KEY=sk-..." > .env
 ./start_api.sh
 
-# 3. Open port 8888 in AWS Security Groups
+# 3. Open port 8000 in AWS Security Groups
 ```
 
 ---
@@ -131,7 +131,7 @@ echo "OPENAI_API_KEY=sk-..." > .env
 ```typescript
 // In your BenchmarkForm handleSubmit:
 
-const response = await fetch("http://149.36.1.201:8888/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -139,7 +139,7 @@ const response = await fetch("http://149.36.1.201:8888/optimize", {
     objective: "balanced",
     max_iterations: 3
   }),
-  signal: AbortSignal.timeout(188880)  // 3 min timeout
+  signal: AbortSignal.timeout(180000)  // 3 min timeout
 })
 
 const result = await response.json()
@@ -176,10 +176,10 @@ See **FRONTEND_INTEGRATION.md** for complete example.
 
 ```bash
 # Health check
-curl http://localhost:8888/
+curl http://localhost:8000/
 
 # Full optimization test
-curl -X POST http://localhost:8888/optimize \
+curl -X POST http://localhost:8000/optimize \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -256,7 +256,7 @@ Your optimizer returns → API formats for frontend:
 
 | Issue | Solution |
 |-------|----------|
-| "Connection refused" | Check port 8888 in AWS Security Groups |
+| "Connection refused" | Check port 8000 in AWS Security Groups |
 | "CUDA not available" | Install NVIDIA drivers, verify with `nvidia-smi` |
 | "OpenAI error" | Check `.env` has valid API key |
 | "Timeout" | Reduce `max_iterations` or increase timeout |

@@ -25,7 +25,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
   try {
     // Call your AWS API endpoint
-    const response = await fetch("http://149.36.1.201:8888/optimize", {
+    const response = await fetch("http://149.36.1.201:8000/optimize", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,7 +36,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         max_iterations: 3
       }),
       // Important: optimization takes 30-90 seconds
-      signal: AbortSignal.timeout(188880)  // 3 min timeout
+      signal: AbortSignal.timeout(180000)  // 3 min timeout
     })
 
     if (!response.ok) {
@@ -123,13 +123,13 @@ const handleSubmit = async (e: React.FormEvent) => {
 Create `.env.local` in your Vercel project:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://149.36.1.201:8888
+NEXT_PUBLIC_API_URL=http://149.36.1.201:8000
 ```
 
 Then use it:
 
 ```typescript
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8888"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 const response = await fetch(`${API_URL}/optimize`, {
   // ...

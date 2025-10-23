@@ -24,13 +24,13 @@ if [ $? -ne 0 ]; then
 fi
 
 # Start API
-echo "✅ Starting API on http://0.0.0.0:8888"
+echo "✅ Starting API on http://0.0.0.0:8000"
 echo ""
 echo "Test it locally with:"
 echo "  python3 test_api.py"
 echo ""
 echo "Or from frontend:"
-echo "  fetch('http://YOUR-IP:8888/optimize', {...})"
+echo "  fetch('http://YOUR-IP:8000/optimize', {...})"
 echo ""
 
 python3 api.py

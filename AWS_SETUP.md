@@ -123,7 +123,7 @@ In AWS Console:
 1. Go to EC2 → Security Groups
 2. Add inbound rule:
    - Type: Custom TCP
-   - Port: 8888
+   - Port: 8000
    - Source: `0.0.0.0/0` (or restrict to your Vercel IP)
 
 ---
@@ -133,7 +133,7 @@ In AWS Console:
 In your Vercel frontend, update the API URL:
 
 ```typescript
-const API_URL = "http://YOUR-AWS-PUBLIC-IP:8888"
+const API_URL = "http://YOUR-AWS-PUBLIC-IP:8000"
 
 // Or use HTTPS with nginx reverse proxy (recommended)
 const API_URL = "https://api.yourdomain.com"
@@ -159,7 +159,7 @@ server {
     server_name api.yourdomain.com;
 
     location / {
-        proxy_pass http://localhost:8888;
+        proxy_pass http://localhost:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_buffering off;  # Important for SSE if you add it later
@@ -184,7 +184,7 @@ Now your API is at `https://api.yourdomain.com`
 ## 🧪 Test from Frontend
 
 ```typescript
-const response = await fetch("http://149.36.1.201:8888/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -219,7 +219,7 @@ htop
 ## 🐛 Troubleshooting
 
 **API not accessible?**
-- Check security group port 8888 is open
+- Check security group port 8000 is open
 - Verify API is running: `pm2 status` or `sudo systemctl status pytorch-api`
 
 **CUDA errors?**
