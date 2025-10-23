@@ -30,11 +30,12 @@ from openai import OpenAI
 import torch
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 
 # Configuration
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 3  # Reduced from 5 for speed
 IMPROVEMENT_THRESHOLD = 0.02  # 2% improvement to continue
 
 # Global storage
@@ -67,11 +68,34 @@ class OptimizationState(TypedDict):
     experts_done: list[str]
 
 
-def call_llm(system_prompt: str, user_prompt: str, model: str = "gpt-4") -> str:
+def call_llm(system_prompt: str, user_prompt: str, model: str = "gpt-4o-mini") -> str:
     """Call OpenAI API"""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY not found!")
+    
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.7,
+        max_tokens=2048
+    )
+    return response.choices[0].message.content
+
+
+def call_llms_parallel(prompts: list[tuple[str, str]], model: str = "gpt-4o-mini") -> list[str]:
+    """Call multiple LLMs in parallel - 3x faster!"""
+    with ThreadPoolExecutor(max_workers=len(prompts)) as executor:
+        futures = [
+            executor.submit(call_llm, system, user, model) 
+            for system, user in prompts
+        ]
+        results = [f.result() for f in futures]
+    return results
     
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
@@ -93,44 +117,22 @@ def call_llm(system_prompt: str, user_prompt: str, model: str = "gpt-4") -> str:
 def profiler_expert(state: OptimizationState) -> dict:
     """Profiles current code and measures all metrics"""
     print(f"\n{'='*70}")
-    print(f"📊 PROFILER EXPERT - Measuring Performance")
+    print(f"📊 PROFILER - Measuring Performance")
     print(f"{'='*70}")
     
     code = state["current_code"]
     dataset_info = state["dataset_info"]
     
     try:
-        # Execute code and measure
+        # Execute code and measure (FAST - no LLM)
         metrics = execute_and_measure(code, dataset_info)
         
-        print(f"\n📈 Measured Metrics:")
+        print(f"\n📈 Metrics:")
         for key, value in metrics.items():
             print(f"   {key}: {value:.4f}")
         
-        # Generate expert analysis
-        system_prompt = """You are a performance profiling expert for PyTorch models.
-Analyze the code and metrics, then provide detailed insights on performance bottlenecks."""
-        
-        user_prompt = f"""CODE:
-```python
-{code}
-```
-
-METRICS:
-{json.dumps(metrics, indent=2)}
-
-Analyze the performance and identify:
-1. Speed bottlenecks (data loading, forward pass, backward pass)
-2. Memory bottlenecks (large tensors, unnecessary copies)
-3. Accuracy issues (loss not decreasing, overfitting)
-4. Stability issues (NaNs, exploding gradients)
-
-Provide specific observations about THIS code."""
-        
-        report = call_llm(system_prompt, user_prompt)
-        
-        print(f"\n🔍 Profiler Analysis:")
-        print(report[:500] + "..." if len(report) > 500 else report)
+        # Skip LLM analysis for speed - just provide basic report
+        report = f"Iteration {state['iteration']}: Measured {len(metrics)} metrics"
         
         return {
             "current_metrics": metrics,
@@ -140,7 +142,6 @@ Provide specific observations about THIS code."""
         
     except Exception as e:
         print(f"❌ Profiling failed: {e}")
-        traceback.print_exc()
         return {
             "current_metrics": {},
             "profiler_report": f"Error: {str(e)}",
@@ -149,99 +150,66 @@ Provide specific observations about THIS code."""
 
 
 # ============================================================================
-# MEMORY TUNER EXPERT
+# MEMORY + OPTIMIZER EXPERTS (RUN IN PARALLEL)
 # ============================================================================
 
-def memory_tuner_expert(state: OptimizationState) -> dict:
-    """Proposes memory optimizations"""
+def call_both_experts(state: OptimizationState) -> dict:
+    """Call memory and optimizer experts in parallel - FAST!"""
     print(f"\n{'='*70}")
-    print(f"💾 MEMORY TUNER EXPERT - Optimizing Memory Usage")
+    print(f"🔥 CALLING EXPERTS IN PARALLEL")
     print(f"{'='*70}")
     
-    system_prompt = """You are a memory optimization expert for PyTorch.
-Propose specific, actionable code changes to reduce memory usage while maintaining or improving performance.
-
-Focus on:
-- Gradient checkpointing
-- Mixed precision (FP16/BF16)
-- Batch size optimization
-- In-place operations
-- Memory-efficient attention
-- Clearing cache strategically"""
+    # Prepare prompts for both experts
+    memory_system = """You are a memory optimization expert for PyTorch.
+Propose 3-5 specific, actionable code changes to reduce memory usage.
+Focus on: gradient checkpointing, mixed precision, batch size, in-place ops."""
     
-    user_prompt = f"""CURRENT CODE:
+    memory_user = f"""CODE:
 ```python
 {state['current_code']}
 ```
 
-PROFILER ANALYSIS:
-{state['profiler_report']}
+METRICS: {json.dumps(state['current_metrics'], indent=2)}
 
-CURRENT METRICS:
-{json.dumps(state['current_metrics'], indent=2)}
-
-Propose 3-5 SPECIFIC memory optimizations with code snippets.
-Format as a list of changes."""
+Propose 3-5 memory optimizations with code snippets."""
     
-    proposal = call_llm(system_prompt, user_prompt)
+    optimizer_system = """You are a PyTorch optimization expert.
+Propose 3-5 specific code changes for speed and efficiency.
+Focus on: torch.compile, AMP, better optimizers, DataLoader workers."""
     
-    print(f"\n💡 Memory Optimization Proposals:")
-    print(proposal[:500] + "..." if len(proposal) > 500 else proposal)
-    
-    return {
-        "memory_proposal": proposal,
-        "experts_done": state["experts_done"] + ["memory"]
-    }
-
-
-# ============================================================================
-# OPTIMIZER EXPERT
-# ============================================================================
-
-def optimizer_expert(state: OptimizationState) -> dict:
-    """Proposes PyTorch-level optimizations"""
-    print(f"\n{'='*70}")
-    print(f"⚡ OPTIMIZER EXPERT - PyTorch Optimizations")
-    print(f"{'='*70}")
-    
-    system_prompt = """You are a PyTorch optimization expert.
-Propose specific code changes for speed and efficiency.
-
-Focus on:
-- torch.compile() with appropriate backend
-- Automatic Mixed Precision (AMP)
-- Learning rate schedulers
-- Optimizer selection (AdamW, Lion, etc.)
-- DataLoader workers and pin_memory
-- Gradient accumulation
-- Better forward pass structure"""
-    
-    user_prompt = f"""CURRENT CODE:
+    optimizer_user = f"""CODE:
 ```python
 {state['current_code']}
 ```
 
-PROFILER ANALYSIS:
-{state['profiler_report']}
+METRICS: {json.dumps(state['current_metrics'], indent=2)}
 
-MEMORY PROPOSALS:
-{state['memory_proposal']}
-
-CURRENT METRICS:
-{json.dumps(state['current_metrics'], indent=2)}
-
-Propose 3-5 SPECIFIC PyTorch optimizations with code snippets.
-Consider what was already proposed by memory tuner."""
+Propose 3-5 PyTorch optimizations with code snippets."""
     
-    proposal = call_llm(system_prompt, user_prompt)
-    
-    print(f"\n💡 Optimizer Proposals:")
-    print(proposal[:500] + "..." if len(proposal) > 500 else proposal)
-    
-    return {
-        "optimizer_proposal": proposal,
-        "experts_done": state["experts_done"] + ["optimizer"]
-    }
+    # Call both in parallel!
+    try:
+        results = call_llms_parallel([
+            (memory_system, memory_user),
+            (optimizer_system, optimizer_user)
+        ])
+        
+        memory_proposal = results[0]
+        optimizer_proposal = results[1]
+        
+        print(f"\n💡 Got both proposals in parallel!")
+        
+        return {
+            "memory_proposal": memory_proposal,
+            "optimizer_proposal": optimizer_proposal,
+            "experts_done": state["experts_done"] + ["memory", "optimizer"]
+        }
+    except Exception as e:
+        print(f"❌ Expert error: {e}")
+        return {
+            "memory_proposal": "Error",
+            "optimizer_proposal": "Error",
+            "experts_done": state["experts_done"] + ["memory", "optimizer"]
+        }
 
 
 # ============================================================================
@@ -307,104 +275,101 @@ Return ONLY Python code in a markdown code block."""
 
 
 # ============================================================================
-# JUDGE LLM
+# SCORER - Converts metrics to single scalar
+# ============================================================================
+
+def normalize_metric(value: float, baseline: float, higher_is_better: bool = True, eps: float = 1e-8) -> float:
+    """Normalize metric to [0,1] range"""
+    if higher_is_better:
+        return max(0.0, min(1.0, value / (baseline + eps)))
+    else:
+        return max(0.0, min(1.0, baseline / (value + eps)))
+
+
+def calculate_score(metrics: dict, baseline: dict, weights: dict = None) -> float:
+    """Calculate composite score J from all metrics"""
+    if not weights:
+        weights = {
+            "speed": 0.4,
+            "accuracy": 0.25,
+            "memory": 0.15,
+            "stability": 0.1,
+            "cost": 0.1
+        }
+    
+    S = normalize_metric(metrics.get("tokens_per_second", 0), baseline.get("tokens_per_second", 1), True)
+    A = normalize_metric(metrics.get("validation_accuracy", 0), baseline.get("validation_accuracy", 1), True)
+    M = normalize_metric(metrics.get("peak_gpu_memory_mb", 1), baseline.get("peak_gpu_memory_mb", 1), False)
+    V = normalize_metric(metrics.get("run_variance", 1), baseline.get("run_variance", 1), False)
+    C = normalize_metric(metrics.get("throughput_per_gb", 0), baseline.get("throughput_per_gb", 1), True)
+    
+    J = (weights["speed"] * S + 
+         weights["accuracy"] * A + 
+         weights["memory"] * M + 
+         weights["stability"] * V + 
+         weights["cost"] * C)
+    
+    return J
+
+
+# ============================================================================
+# JUDGE LLM (with structured scoring)
 # ============================================================================
 
 def judge_improvement(state: OptimizationState) -> dict:
-    """Judge evaluates if improvement was made"""
+    """Judge evaluates using composite scoring + LLM verification"""
     print(f"\n{'='*70}")
-    print(f"⚖️  JUDGE LLM - Evaluating Improvement")
+    print(f"⚖️  JUDGE - Evaluating Improvement")
     print(f"{'='*70}")
     
-    # Check if we have previous metrics
+    current = state["current_metrics"]
+    
+    # First iteration - set baseline
     if not state.get("best_metrics"):
-        # First iteration - set as baseline
-        print("📊 Setting baseline metrics")
+        print("📊 Setting baseline")
         return {
-            "best_metrics": state["current_metrics"],
+            "best_metrics": current,
             "best_code": state["current_code"],
             "iteration": state["iteration"] + 1,
             "converged": False
         }
     
-    # Calculate improvement
+    baseline = state["best_metrics"]
+    
+    # Calculate composite score
+    score_current = calculate_score(current, baseline)
+    score_baseline = 1.0  # By definition
+    
+    improvement_pct = (score_current - score_baseline) * 100
+    
+    print(f"\n📊 Composite Score: {score_current:.3f} (baseline: 1.0)")
+    print(f"   Overall: {improvement_pct:+.1f}%")
+    
+    # Individual metric changes
     improvements = {}
-    objective = state["objective"]
-    
-    current = state["current_metrics"]
-    best = state["best_metrics"]
-    
-    # Calculate improvements for each metric
     for metric in current.keys():
-        if metric in best and best[metric] > 0:
-            improvement = ((current[metric] - best[metric]) / best[metric]) * 100
-            improvements[metric] = improvement
+        if metric in baseline and baseline[metric] > 0:
+            pct = ((current[metric] - baseline[metric]) / baseline[metric]) * 100
+            improvements[metric] = pct
+            symbol = "📈" if pct > 0 else "📉"
+            print(f"   {symbol} {metric}: {pct:+.1f}%")
     
-    print(f"\n📊 Improvement Analysis:")
-    for metric, improvement in improvements.items():
-        symbol = "📈" if improvement > 0 else "📉"
-        print(f"   {symbol} {metric}: {improvement:+.2f}%")
-    
-    # Determine if this is better based on objective
-    is_better = False
-    if objective == "speed":
-        is_better = improvements.get("tokens_per_second", -999) > IMPROVEMENT_THRESHOLD * 100
-    elif objective == "memory":
-        is_better = improvements.get("peak_gpu_memory_mb", 999) < -IMPROVEMENT_THRESHOLD * 100
-    elif objective == "accuracy":
-        is_better = improvements.get("validation_accuracy", -999) > IMPROVEMENT_THRESHOLD * 100
-    else:  # balanced
-        # Weighted score
-        score = (
-            improvements.get("tokens_per_second", 0) * 0.3 +
-            improvements.get("validation_accuracy", 0) * 0.3 +
-            -improvements.get("peak_gpu_memory_mb", 0) * 0.2 +
-            -improvements.get("run_variance", 0) * 0.2
-        )
-        is_better = score > IMPROVEMENT_THRESHOLD * 100
-    
-    # Call LLM Judge for qualitative assessment
-    system_prompt = """You are an expert judge evaluating PyTorch optimization improvements.
-Provide a brief assessment of whether the changes represent genuine improvement."""
-    
-    user_prompt = f"""OBJECTIVE: {objective}
-
-PREVIOUS METRICS:
-{json.dumps(best, indent=2)}
-
-CURRENT METRICS:
-{json.dumps(current, indent=2)}
-
-IMPROVEMENTS:
-{json.dumps(improvements, indent=2)}
-
-Is this a meaningful improvement? Consider:
-1. Metrics aligned with objective
-2. No significant regression in other metrics
-3. Trade-offs are reasonable
-
-Respond with: ACCEPT or REJECT and brief reason."""
-    
-    judge_verdict = call_llm(system_prompt, user_prompt)
-    
-    print(f"\n⚖️  Judge Verdict:")
-    print(judge_verdict)
-    
-    # Update if better
-    if is_better or "ACCEPT" in judge_verdict.upper():
-        print(f"\n🎯 NEW BEST! Updating best metrics")
+    # Quick decision: if score improved significantly, accept
+    if score_current > 1.0 + IMPROVEMENT_THRESHOLD:
+        print(f"\n🎯 ACCEPTED - Score improved!")
         return {
             "best_metrics": current,
             "best_code": state["current_code"],
             "iteration": state["iteration"] + 1,
             "converged": state["iteration"] >= MAX_ITERATIONS - 1
         }
-    else:
-        print(f"\n📊 No significant improvement")
-        return {
-            "iteration": state["iteration"] + 1,
-            "converged": state["iteration"] >= MAX_ITERATIONS - 1 or state["iteration"] > 2
-        }
+    
+    # If marginal or worse, ask LLM judge (skip for speed)
+    print(f"\n📊 Marginal/no improvement")
+    return {
+        "iteration": state["iteration"] + 1,
+        "converged": state["iteration"] >= MAX_ITERATIONS - 1 or state["iteration"] > 2
+    }
 
 
 # ============================================================================
@@ -557,20 +522,18 @@ def build_graph():
     """Build the optimization workflow"""
     workflow = StateGraph(OptimizationState)
     
-    # Add nodes
+    # Add nodes (using parallel experts now!)
     workflow.add_node("profiler", profiler_expert)
-    workflow.add_node("memory", memory_tuner_expert)
-    workflow.add_node("optimizer", optimizer_expert)
+    workflow.add_node("experts", call_both_experts)  # Memory + Optimizer in parallel!
     workflow.add_node("generate", code_generator)
     workflow.add_node("judge", judge_improvement)
     
     # Entry point
     workflow.set_entry_point("profiler")
     
-    # Sequential flow
-    workflow.add_edge("profiler", "memory")
-    workflow.add_edge("memory", "optimizer")
-    workflow.add_edge("optimizer", "generate")
+    # Sequential flow (but experts run in parallel internally)
+    workflow.add_edge("profiler", "experts")
+    workflow.add_edge("experts", "generate")
     workflow.add_edge("generate", "judge")
     
     # Judge decides: continue or end
@@ -591,15 +554,12 @@ def optimize_pytorch_code(
     code: str,
     dataset_info: dict = None,
     objective: str = "balanced",
-    max_iterations: int = 5
+    max_iterations: int = 3  # Reduced from 5 for speed
 ):
-    """Main optimization function"""
+    """Main optimization function - returns JSON for UI"""
     print(f"\n{'='*70}")
-    print(f"🚀 SELF-IMPROVING PYTORCH OPTIMIZER")
+    print(f"🚀 PYTORCH OPTIMIZER")
     print(f"{'='*70}")
-    print(f"Objective: {objective}")
-    print(f"Max Iterations: {max_iterations}")
-    print(f"{'='*70}\n")
     
     global MAX_ITERATIONS
     MAX_ITERATIONS = max_iterations
@@ -623,57 +583,71 @@ def optimize_pytorch_code(
     graph = build_graph()
     
     final_state = None
+    iteration_results = []
+    
     try:
         for iteration_state in graph.stream(initial_state, {"recursion_limit": 100}):
             final_state = iteration_state
+            # Capture each iteration for UI
+            if final_state:
+                state_dict = list(final_state.values())[0]
+                if state_dict.get("current_metrics"):
+                    iteration_results.append({
+                        "iteration": state_dict.get("iteration", 0),
+                        "metrics": state_dict.get("current_metrics", {}),
+                        "score": calculate_score(
+                            state_dict.get("current_metrics", {}),
+                            state_dict.get("best_metrics") or state_dict.get("current_metrics", {})
+                        ) if state_dict.get("current_metrics") else 0.0
+                    })
     except Exception as e:
-        print(f"\n❌ Optimization error: {e}")
+        print(f"\n❌ Error: {e}")
         traceback.print_exc()
-        if final_state:
-            final_state = list(final_state.values())[0]
     
     if final_state:
         final_state = list(final_state.values())[0]
         
-        print(f"\n{'='*70}")
-        print(f"🏁 OPTIMIZATION COMPLETE")
-        print(f"{'='*70}")
+        # Calculate improvements
+        improvements = {}
+        if final_state.get("best_metrics") and final_state.get("current_metrics"):
+            baseline = final_state["best_metrics"]
+            for metric, value in final_state.get("best_metrics", {}).items():
+                if metric in baseline and baseline[metric] > 0:
+                    improvements[metric] = ((value - baseline[metric]) / baseline[metric]) * 100
         
-        # Generate final report
-        report = {
+        # Calculate composite score
+        final_score = calculate_score(
+            final_state.get("best_metrics", {}),
+            final_state.get("best_metrics", {})
+        ) if final_state.get("best_metrics") else 0.0
+        
+        # Prepare JSON output for UI
+        result_json = {
             "success": bool(final_state.get("best_metrics")),
             "iterations_completed": final_state.get("iteration", 0),
             "objective": objective,
-            "initial_metrics": {},  # First iteration metrics
+            "final_score": final_score,
             "final_metrics": final_state.get("best_metrics", {}),
-            "improvements": {},
-            "best_code": final_state.get("best_code", code)
+            "improvements": improvements,
+            "iteration_history": iteration_results,
+            "best_code": final_state.get("best_code", code),
+            "timestamp": datetime.now().isoformat()
         }
         
-        # Calculate improvements
-        if report["final_metrics"]:
-            # Find initial metrics from first iteration
-            # (In real implementation, store this)
-            for metric, final_val in report["final_metrics"].items():
-                # Placeholder - would need to store initial
-                report["improvements"][metric] = "N/A (need initial)"
+        # Print for debugging
+        print(f"\n{'='*70}")
+        print(f"🏁 COMPLETE")
+        print(f"{'='*70}")
+        print(json.dumps(result_json, indent=2))
         
-        print(f"\n📊 Final Metrics:")
-        for metric, value in report["final_metrics"].items():
-            print(f"   {metric}: {value:.4f}")
-        
-        print(f"\n💾 Saving results...")
+        # Save results
         with open("optimization_results.json", "w") as f:
-            json.dump(report, f, indent=2)
+            json.dump(result_json, f, indent=2)
         
         with open("optimized_code.py", "w") as f:
-            f.write(report["best_code"])
+            f.write(result_json["best_code"])
         
-        print(f"\n✅ Results saved to:")
-        print(f"   - optimization_results.json")
-        print(f"   - optimized_code.py")
-        
-        return report
+        return result_json
 
 
 if __name__ == "__main__":
