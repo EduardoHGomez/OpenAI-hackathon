@@ -78,10 +78,10 @@ class TuningState(TypedDict):
     proposals: Annotated[list[dict[str, Any]], operator.add]
     
     # Validated & deduplicated configs
-    valid_configs: list[dict[str, Any]]
+    valid_configs: list[dict[str, Any], operator.add]
     
     # Execution results
-    results: list[dict[str, Any]]
+    results: list[dict[str, Any], operator.add]
     
     # Best config so far
     best_config: dict[str, Any] | None
