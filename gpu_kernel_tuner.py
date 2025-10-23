@@ -7,6 +7,8 @@ Fully integrated with:
 - Your triton_matmul.py for benchmarking
 - Your metrics_evaluator.py for evaluation
 - Complex flow (parallel experts)
+
+FIXED: Lines 81, 84 - Removed incorrect operator.add annotations
 """
 
 import json
@@ -29,6 +31,10 @@ load_dotenv()
 
 # OpenAI imports
 from openai import OpenAI
+
+# For benchmarking
+import torch
+import numpy as np
 
 
 # ============================================================================
@@ -74,14 +80,14 @@ class TuningState(TypedDict):
     history: list[dict[str, Any]]
     symptoms: list[str]
     
-    # Proposals from experts
+    # Proposals from experts (ONLY this one needs operator.add for parallel merging)
     proposals: Annotated[list[dict[str, Any]], operator.add]
     
-    # Validated & deduplicated configs
-    valid_configs: list[dict[str, Any], operator.add]
+    # Validated & deduplicated configs (FIXED: removed operator.add)
+    valid_configs: list[dict[str, Any]]
     
-    # Execution results
-    results: list[dict[str, Any], operator.add]
+    # Execution results (FIXED: removed operator.add)
+    results: list[dict[str, Any]]
     
     # Best config so far
     best_config: dict[str, Any] | None
@@ -267,7 +273,7 @@ def validate_proposals(state: TuningState) -> dict:
         smem = estimate_shared_memory(config, state["kernel"])
         MAX_SMEM = 96 * 1024  # 96KB conservative limit
         if smem > MAX_SMEM:
-            print(f"❌ {proposal['expert']}: SMEM {smem/1024:.1f}KB > {MAX_SMEM/1024}KB")
+            print(f"❌ {proposal['expert']}: SMEM {smem/1024:.1f}KB > {MAX_SMEM/1024:.1f}KB")
             continue
         
         # Deduplicate
@@ -289,9 +295,6 @@ def validate_proposals(state: TuningState) -> dict:
 # ============================================================================
 # EXECUTION NODE - INTEGRATED WITH YOUR TRITON CODE
 # ============================================================================
-
-import torch
-import numpy as np
 
 def execute_configs(state: TuningState) -> dict:
     """
