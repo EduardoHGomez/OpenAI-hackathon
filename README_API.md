@@ -54,7 +54,7 @@ A **battle-tested** FastAPI server that:
 
 ### Request
 ```bash
-POST http://54.227.120.179:8000/optimize
+POST http://149.36.1.201:8000/optimize
 Content-Type: application/json
 
 {
@@ -114,7 +114,7 @@ python3 test_api.py
 ### AWS Deploy (10 minutes)
 ```bash
 # 1. Upload to AWS
-scp -i key.pem -r . ubuntu@54.227.120.179:~/app/
+scp -i key.pem -r . ubuntu@149.36.1.201:~/app/
 
 # 2. SSH and run
 ssh -i key.pem ubuntu@149.36.1.201:17136cd app
@@ -131,7 +131,7 @@ echo "OPENAI_API_KEY=sk-..." > .env
 ```typescript
 // In your BenchmarkForm handleSubmit:
 
-const response = await fetch("http://54.227.120.179:8000/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({

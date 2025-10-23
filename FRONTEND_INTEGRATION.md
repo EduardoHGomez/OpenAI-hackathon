@@ -25,7 +25,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
   try {
     // Call your AWS API endpoint
-    const response = await fetch("http://54.227.120.179:8000/optimize", {
+    const response = await fetch("http://149.36.1.201:8000/optimize", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -123,7 +123,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 Create `.env.local` in your Vercel project:
 
 ```bash
-NEXT_PUBLIC_API_URL=http://54.227.120.179:8000
+NEXT_PUBLIC_API_URL=http://149.36.1.201:8000
 ```
 
 Then use it:

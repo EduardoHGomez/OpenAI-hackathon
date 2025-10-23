@@ -107,4 +107,4 @@ if __name__ == "__main__":
     test_api("http://localhost:8000")
 
     # Or test on AWS (replace with your instance IP)
-    # test_api("http://54.227.120.179:8000")
+    # test_api("http://149.36.1.201:8000")

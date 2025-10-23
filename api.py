@@ -42,10 +42,34 @@ class MetricsResponse(BaseModel):
 @app.get("/")
 def root():
     """Health check"""
+    import torch
     return {
         "status": "online",
         "service": "PyTorch Optimizer API",
-        "gpu_available": __import__("torch").cuda.is_available()
+        "version": "1.0.0",
+        "gpu_available": torch.cuda.is_available(),
+        "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "N/A"
+    }
+
+
+@app.get("/health")
+def health():
+    """Detailed health check"""
+    import torch
+    import os
+    return {
+        "status": "healthy",
+        "gpu": {
+            "available": torch.cuda.is_available(),
+            "count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            "name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "N/A"
+        },
+        "api_key_set": bool(os.getenv("OPENAI_API_KEY")),
+        "endpoints": {
+            "health": "GET /health",
+            "optimize": "POST /optimize"
+        }
     }
 
 

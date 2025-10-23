@@ -33,7 +33,7 @@ python3 test_api.py
 # 1. SSH into your GPU instance
 ssh -i your-key.pem ubuntu@149.36.1.201:17136
 # 2. Upload files
-scp -i your-key.pem -r ./* ubuntu@54.227.120.179:~/openai-hackathon/
+scp -i your-key.pem -r ./* ubuntu@149.36.1.201:~/openai-hackathon/
 
 # 3. On AWS instance:
 cd openai-hackathon
@@ -46,7 +46,7 @@ chmod +x start_api.sh
 # EC2 Console → Security Groups → Add inbound rule → Port 8000
 
 # 5. Test from anywhere
-curl http://54.227.120.179:8000/
+curl http://149.36.1.201:8000/
 ```
 
 ---
@@ -57,7 +57,7 @@ curl http://54.227.120.179:8000/
 Health check
 
 ```bash
-curl http://54.227.120.179:8000/
+curl http://149.36.1.201:8000/
 # Response: {"status": "online", "gpu_available": true}
 ```
 
@@ -65,7 +65,7 @@ curl http://54.227.120.179:8000/
 Main endpoint - optimize PyTorch code
 
 ```bash
-curl -X POST http://54.227.120.179:8000/optimize \
+curl -X POST http://149.36.1.201:8000/optimize \
   -H "Content-Type: application/json" \
   -d '{
     "code": "import torch\n...",
@@ -118,7 +118,7 @@ curl -X POST http://54.227.120.179:8000/optimize \
 ## 🎨 Frontend Integration
 
 ```typescript
-const response = await fetch("http://54.227.120.179:8000/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({

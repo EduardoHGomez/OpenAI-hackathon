@@ -27,7 +27,7 @@ sudo apt install python3.10 python3-pip -y
 
 ```bash
 # From your local machine, copy files to AWS
-scp -i your-key.pem -r /path/to/openai-hackathon ubuntu@54.227.120.179:~/
+scp -i your-key.pem -r /path/to/openai-hackathon ubuntu@149.36.1.201:~/
 
 # Or clone from git
 # git clone your-repo.git
@@ -184,7 +184,7 @@ Now your API is at `https://api.yourdomain.com`
 ## 🧪 Test from Frontend
 
 ```typescript
-const response = await fetch("http://54.227.120.179:8000/optimize", {
+const response = await fetch("http://149.36.1.201:8000/optimize", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
