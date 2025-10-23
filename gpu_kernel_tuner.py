@@ -249,10 +249,6 @@ def analyze_and_continue(state: TuningState) -> dict:
     if len(state["experts_done"]) < 3:
         return {}
     
-    print(f"\n{'='*70}")
-    print(f"📊 Iteration {state['iteration']} complete")
-    print(f"{'='*70}")
-    
     # Store iteration data
     iteration_data = {
         "iteration": state["iteration"],
@@ -267,6 +263,11 @@ def analyze_and_continue(state: TuningState) -> dict:
         print("⚠️  No valid results")
         print("   All configs failed correctness check")
         
+        # Set a default for best_config in case no valid results are found
+        if state["best_config"] is None:
+            state["best_config"] = None
+            print("Setting best_config to None because no valid results were found.")
+            
         # FORCE STOP after max iterations
         if state["iteration"] + 1 >= state["max_iterations"]:
             print(f"\n🛑 Reached max iterations ({state['max_iterations']})")
@@ -317,6 +318,10 @@ def analyze_and_continue(state: TuningState) -> dict:
     
     if converged:
         print("✅ CONVERGED")
+    
+    # Set best_config to None if no improvement
+    if not improvement:
+        best_config = None
     
     return {
         "history": history,
